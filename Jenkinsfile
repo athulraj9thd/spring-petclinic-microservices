@@ -2,17 +2,17 @@ pipeline {
     agent any
 
     tools {
-        jdk 'jdk17'
         maven 'maven-3'
+        jdk 'jdk17'
     }
 
     environment {
-        MAVEN_OPTS = '-Xmx1024m'
+        SONARQUBE_ENV = 'sonarqube'
     }
 
     stages {
 
-        stage('Checkout Source') {
+        stage('Checkout') {
             steps {
                 checkout scm
             }
@@ -20,35 +20,44 @@ pipeline {
 
         stage('Maven Build') {
             steps {
-                sh '''
-                  mvn clean package -DskipTests
-                '''
+                sh 'mvn clean package -DskipTests'
             }
         }
 
-        stage('SonarQube Analysis') {
-            environment {
-                SONAR_TOKEN = credentials('sonarqube-token')
-            }
+        stage('SonarQube Scan') {
             steps {
-                withSonarQubeEnv('sonarqube-local') {
+                withSonarQubeEnv("${SONARQUBE_ENV}") {
                     sh '''
-                      mvn sonar:sonar \
-                        -Dsonar.projectKey=petclinic-microservices \
-                        -Dsonar.projectName=petclinic-microservices \
-                        -Dsonar.login=$SONAR_TOKEN
+                    mvn sonar:sonar \
+                      -Dsonar.projectKey=petclinic-microservices \
+                      -Dsonar.projectName=petclinic-microservices \
+                      -Dsonar.java.binaries=.
                     '''
                 }
             }
         }
-    }
 
-    post {
-        success {
-            echo 'CI pipeline completed successfully'
-        }
-        failure {
-            echo 'CI pipeline failed'
+        stage('Build Docker Images') {
+            steps {
+                sh '''
+                SERVICES=(
+                  spring-petclinic-config-server
+                  spring-petclinic-discovery-server
+                  spring-petclinic-api-gateway
+                  spring-petclinic-customers-service
+                  spring-petclinic-vets-service
+                  spring-petclinic-visits-service
+                  spring-petclinic-admin-server
+                )
+
+                for service in "${SERVICES[@]}"; do
+                  echo "Building Docker image for $service"
+                  cd $service
+                  docker build -t athulraj9thd/$service:dev .
+                  cd ..
+                done
+                '''
+            }
         }
     }
 }
