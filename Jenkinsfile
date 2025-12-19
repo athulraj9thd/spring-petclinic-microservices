@@ -8,6 +8,7 @@ pipeline {
 
     environment {
         SONARQUBE_ENV = 'sonarqube-local'
+        DOCKER_NAMESPACE = 'athul9thd'
     }
 
     stages {
@@ -53,7 +54,7 @@ pipeline {
                   for service in $SERVICES; do
                     echo "Building Docker image for $service"
                     cd $service
-                    docker build -t athulraj9thd/$service:dev .
+                    docker build -t ${DOCKER_NAMESPACE}/$service:dev .
                     cd ..
                   done
                 '''
@@ -84,7 +85,7 @@ pipeline {
 
                       for service in $SERVICES; do
                         echo "Pushing Docker image for $service"
-                        docker push athulraj9thd/$service:dev
+                        docker push ${DOCKER_NAMESPACE}/$service:dev
                       done
                     '''
                 }
