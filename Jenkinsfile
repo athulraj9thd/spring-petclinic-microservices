@@ -8,6 +8,8 @@ pipeline {
 
     environment {
         SONARQUBE_ENV = 'sonarqube-local'
+        DOCKERHUB_CREDENTIALS = 'dockerhub-creds'
+        DOCKERHUB_USER = 'athulraj9thd'
     }
 
     stages {
@@ -51,10 +53,39 @@ pipeline {
                 do
                   echo "Building Docker image for $service"
                   cd "$service"
-                  docker build -t athulraj9thd/$service:dev .
+                  docker build -t ${DOCKERHUB_USER}/$service:dev .
                   cd ..
                 done
                 '''
+            }
+        }
+
+        stage('Push Docker Images') {
+            steps {
+                withCredentials([usernamePassword(
+                    credentialsId: "${DOCKERHUB_CREDENTIALS}",
+                    usernameVariable: 'DOCKER_USER',
+                    passwordVariable: 'DOCKER_PASS'
+                )]) {
+                    sh '''
+                    echo "$DOCKER_PASS" | docker login -u "$DOCKER_USER" --password-stdin
+
+                    for service in \
+                      spring-petclinic-config-server \
+                      spring-petclinic-discovery-server \
+                      spring-petclinic-api-gateway \
+                      spring-petclinic-customers-service \
+                      spring-petclinic-vets-service \
+                      spring-petclinic-visits-service \
+                      spring-petclinic-admin-server
+                    do
+                      echo "Pushing Docker image for $service"
+                      docker push ${DOCKERHUB_USER}/$service:dev
+                    done
+
+                    docker logout
+                    '''
+                }
             }
         }
     }
