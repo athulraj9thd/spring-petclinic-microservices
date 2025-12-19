@@ -40,19 +40,17 @@ pipeline {
         stage('Build Docker Images') {
             steps {
                 sh '''
-                SERVICES=(
-                  spring-petclinic-config-server
-                  spring-petclinic-discovery-server
-                  spring-petclinic-api-gateway
-                  spring-petclinic-customers-service
-                  spring-petclinic-vets-service
-                  spring-petclinic-visits-service
+                for service in \
+                  spring-petclinic-config-server \
+                  spring-petclinic-discovery-server \
+                  spring-petclinic-api-gateway \
+                  spring-petclinic-customers-service \
+                  spring-petclinic-vets-service \
+                  spring-petclinic-visits-service \
                   spring-petclinic-admin-server
-                )
-
-                for service in "${SERVICES[@]}"; do
+                do
                   echo "Building Docker image for $service"
-                  cd $service
+                  cd "$service"
                   docker build -t athulraj9thd/$service:dev .
                   cd ..
                 done
