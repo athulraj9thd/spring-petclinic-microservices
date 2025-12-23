@@ -43,7 +43,7 @@ pipeline {
 
         stage('SonarQube Scan') {
             steps {
-                withSonarQubeEnv('sonarqube') {
+                withSonarQubeEnv('sonarqube-local') {
                     sh '''
                       mvn sonar:sonar
                     '''
