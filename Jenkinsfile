@@ -5,7 +5,7 @@ pipeline {
         choice(
             name: 'ENV',
             choices: ['dev', 'uat', 'prod'],
-            description: 'Target environment for deployment'
+            description: 'Target environment'
         )
     }
 
@@ -14,16 +14,22 @@ pipeline {
         MAVEN_OPTS = '-Dmaven.test.skip=true'
     }
 
-    tools {
-        maven 'maven'
-        jdk 'jdk17'
-    }
-
     stages {
 
         stage('Checkout') {
             steps {
                 checkout scm
+            }
+        }
+
+        stage('Verify Tools') {
+            steps {
+                sh '''
+                  java -version
+                  mvn -version
+                  docker --version
+                  kubectl version --client
+                '''
             }
         }
 
@@ -66,7 +72,7 @@ pipeline {
                     passwordVariable: 'DOCKER_PASS'
                 )]) {
                     sh '''
-                      echo $DOCKER_PASS | docker login -u $DOCKER_USER --password-stdin
+                      echo "$DOCKER_PASS" | docker login -u "$DOCKER_USER" --password-stdin
 
                       docker push ${DOCKER_REGISTRY}/spring-petclinic-config-server:${ENV}
                       docker push ${DOCKER_REGISTRY}/spring-petclinic-discovery-server:${ENV}
@@ -91,10 +97,10 @@ pipeline {
 
     post {
         success {
-            echo "Deployment to ${params.ENV} environment SUCCESSFUL"
+            echo "✅ Deployment to ${params.ENV} completed successfully"
         }
         failure {
-            echo "Deployment to ${params.ENV} environment FAILED"
+            echo "❌ Deployment to ${params.ENV} failed"
         }
     }
 }
