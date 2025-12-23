@@ -1,14 +1,22 @@
 pipeline {
     agent any
 
-    tools {
-        maven 'maven-3'
-        jdk 'jdk17'
+    parameters {
+        choice(
+            name: 'ENV',
+            choices: ['dev', 'uat', 'prod'],
+            description: 'Target environment for deployment'
+        )
     }
 
     environment {
-        SONARQUBE_ENV = 'sonarqube-local'
-        DOCKER_NAMESPACE = 'athul9thd'
+        DOCKER_REGISTRY = 'athul9thd'
+        MAVEN_OPTS = '-Dmaven.test.skip=true'
+    }
+
+    tools {
+        maven 'maven'
+        jdk 'jdk17'
     }
 
     stages {
@@ -19,45 +27,19 @@ pipeline {
             }
         }
 
-        stage('Determine Environment') {
-            steps {
-                script {
-                    if (env.BRANCH_NAME == 'dev') {
-                        env.ENV = 'dev'
-                        env.NAMESPACE = 'petclinic-dev'
-                    } else if (env.BRANCH_NAME == 'uat') {
-                        env.ENV = 'uat'
-                        env.NAMESPACE = 'petclinic-uat'
-                    } else if (env.BRANCH_NAME == 'main') {
-                        env.ENV = 'prod'
-                        env.NAMESPACE = 'petclinic-prod'
-                    } else {
-                        error "Unsupported branch: ${env.BRANCH_NAME}"
-                    }
-                }
-
-                sh '''
-                  echo "Branch      : $BRANCH_NAME"
-                  echo "Environment : $ENV"
-                  echo "Namespace   : $NAMESPACE"
-                '''
-            }
-        }
-
         stage('Maven Build') {
             steps {
-                sh 'mvn clean package -DskipTests'
+                sh '''
+                  mvn clean package -DskipTests
+                '''
             }
         }
 
         stage('SonarQube Scan') {
             steps {
-                withSonarQubeEnv("${SONARQUBE_ENV}") {
+                withSonarQubeEnv('sonarqube') {
                     sh '''
-                      mvn sonar:sonar \
-                        -Dsonar.projectKey=petclinic-microservices \
-                        -Dsonar.projectName=petclinic-microservices \
-                        -Dsonar.java.binaries=.
+                      mvn sonar:sonar
                     '''
                 }
             }
@@ -66,52 +48,32 @@ pipeline {
         stage('Build Docker Images') {
             steps {
                 sh '''
-                  SERVICES="
-                  spring-petclinic-config-server
-                  spring-petclinic-discovery-server
-                  spring-petclinic-api-gateway
-                  spring-petclinic-customers-service
-                  spring-petclinic-vets-service
-                  spring-petclinic-visits-service
-                  spring-petclinic-admin-server
-                  "
-
-                  for service in $SERVICES; do
-                    echo "Building image: $service"
-                    cd $service
-                    docker build -t ${DOCKER_NAMESPACE}/$service:${ENV} .
-                    cd ..
-                  done
+                  docker build -t ${DOCKER_REGISTRY}/spring-petclinic-config-server:${ENV} spring-petclinic-config-server
+                  docker build -t ${DOCKER_REGISTRY}/spring-petclinic-discovery-server:${ENV} spring-petclinic-discovery-server
+                  docker build -t ${DOCKER_REGISTRY}/spring-petclinic-api-gateway:${ENV} spring-petclinic-api-gateway
+                  docker build -t ${DOCKER_REGISTRY}/spring-petclinic-customers-service:${ENV} spring-petclinic-customers-service
+                  docker build -t ${DOCKER_REGISTRY}/spring-petclinic-vets-service:${ENV} spring-petclinic-vets-service
+                  docker build -t ${DOCKER_REGISTRY}/spring-petclinic-visits-service:${ENV} spring-petclinic-visits-service
                 '''
             }
         }
 
         stage('Push Docker Images') {
             steps {
-                withCredentials([
-                    usernamePassword(
-                        credentialsId: 'dockerhub-creds',
-                        usernameVariable: 'DOCKER_USER',
-                        passwordVariable: 'DOCKER_PASS'
-                    )
-                ]) {
+                withCredentials([usernamePassword(
+                    credentialsId: 'dockerhub-creds',
+                    usernameVariable: 'DOCKER_USER',
+                    passwordVariable: 'DOCKER_PASS'
+                )]) {
                     sh '''
-                      echo "$DOCKER_PASS" | docker login -u "$DOCKER_USER" --password-stdin
+                      echo $DOCKER_PASS | docker login -u $DOCKER_USER --password-stdin
 
-                      SERVICES="
-                      spring-petclinic-config-server
-                      spring-petclinic-discovery-server
-                      spring-petclinic-api-gateway
-                      spring-petclinic-customers-service
-                      spring-petclinic-vets-service
-                      spring-petclinic-visits-service
-                      spring-petclinic-admin-server
-                      "
-
-                      for service in $SERVICES; do
-                        echo "Pushing image: $service:${ENV}"
-                        docker push ${DOCKER_NAMESPACE}/$service:${ENV}
-                      done
+                      docker push ${DOCKER_REGISTRY}/spring-petclinic-config-server:${ENV}
+                      docker push ${DOCKER_REGISTRY}/spring-petclinic-discovery-server:${ENV}
+                      docker push ${DOCKER_REGISTRY}/spring-petclinic-api-gateway:${ENV}
+                      docker push ${DOCKER_REGISTRY}/spring-petclinic-customers-service:${ENV}
+                      docker push ${DOCKER_REGISTRY}/spring-petclinic-vets-service:${ENV}
+                      docker push ${DOCKER_REGISTRY}/spring-petclinic-visits-service:${ENV}
                     '''
                 }
             }
@@ -120,17 +82,8 @@ pipeline {
         stage('Deploy to Kubernetes') {
             steps {
                 sh '''
-                  MANIFEST_DIR="k8s/${ENV}"
-
-                  if [ ! -d "$MANIFEST_DIR" ]; then
-                    echo "ERROR: $MANIFEST_DIR does not exist"
-                    exit 1
-                  fi
-
-                  echo "Deploying manifests from $MANIFEST_DIR to namespace $NAMESPACE"
-
-                  kubectl apply -f $MANIFEST_DIR/namespace.yaml || true
-                  kubectl apply -f $MANIFEST_DIR
+                  kubectl apply -f k8s/${ENV}/namespace.yaml
+                  kubectl apply -f k8s/${ENV}
                 '''
             }
         }
@@ -138,10 +91,10 @@ pipeline {
 
     post {
         success {
-            echo "✅ CI/CD pipeline completed successfully for ${ENV}"
+            echo "Deployment to ${params.ENV} environment SUCCESSFUL"
         }
         failure {
-            echo "❌ CI/CD pipeline failed for ${ENV}"
+            echo "Deployment to ${params.ENV} environment FAILED"
         }
     }
 }
