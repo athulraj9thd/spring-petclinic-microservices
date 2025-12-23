@@ -1,34 +1,36 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: config-server
+  name: customers-service
   namespace: petclinic-dev
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: config-server
+      app: customers-service
   template:
     metadata:
       labels:
-        app: config-server
+        app: customers-service
     spec:
       containers:
-        - name: config-server
-          image: athul9thd/spring-petclinic-config-server:dev
+        - name: customers-service
+          image: athul9thd/spring-petclinic-customers-service:dev
+          imagePullPolicy: Always
           ports:
-            - containerPort: 8888
+            - containerPort: 8081
           env:
-            - name: SPRING_PROFILES_ACTIVE
-              value: git
-            - name: SPRING_CLOUD_CONFIG_SERVER_GIT_URI
-              value: https://github.com/athulraj9thd/petclinic-config-repo
-            - name: SPRING_CLOUD_CONFIG_SERVER_GIT_DEFAULT_LABEL
-              value: main
+            - name: SPRING_CONFIG_IMPORT
+              value: "configserver:http://config-server:8888"
+            - name: EUREKA_CLIENT_SERVICEURL_DEFAULTZONE
+              value: "http://discovery-server:8761/eureka"
+          envFrom:
+            - configMapRef:
+                name: petclinic-config
           resources:
             requests:
               cpu: "100m"
               memory: "256Mi"
             limits:
-              cpu: "300m"
+              cpu: "500m"
               memory: "512Mi"
